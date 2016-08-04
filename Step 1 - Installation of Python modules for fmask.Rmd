@@ -1,0 +1,47 @@
+---
+title: "Installing Python and dependent libraries for fmask"
+author: "Bart Huntley"
+date: "Tuesday, August 02, 2016"
+output: html_document
+---
+
+## Introduction
+This document outlines the process involved to download Python modules that implement the ‘fmask’ algorithm. This algorithm has been used in many instances, including creating cloud mask products for USGS CDR products, and is described in "Zhu, Z. and Woodcock, C.E. (2012). Object-based cloud and cloud shadow detection in Landsat imagery Remote Sensing of Environment 118 (2012) 83-94." and "Zhu, Z., Wang, S. and Woodcock, C.E. (2015). Improvement and expansion of the Fmask algorithm: cloud, cloud shadow, and snow detection for Landsats 4-7, 8, and Sentinel 2 images Remote Sensing of Environment 159 (2015) 269-277."
+
+As hinted at in the second journal above, this version of fmask can also be used for Sentinel 2 imagery. A lot of the information below can also be found at <http://pythonfmask.org/en/latest/>.
+
+## The modules
+Installation of fmask requires Python, numpy, scipy, GDAL and RIOS and the ability to compile C extensions for Python. With some trial and error this was most easily achieved through the use of Conda packages (a functionality achieved through the installation of Miniconda). Miniconda is a bit like a package/module manager and will allow the set up of an environment that has the correct versions of the modules that play together nicely. This whole process takes approximately 15 minutes.
+
+## Miniconda
+To install Miniconda go to <http://conda.pydata.org/miniconda.html#miniconda> and download the 64-bit (exe installer) for Python 2.7. **Don't worry, this does not require system ADMIN rights!**.
+
+Double click the downloaded exe file to install software as usual however ensure that you install "just for me" and not all users. Click finish when prompted.
+
+Before proceeding go to Start Menu > All Programs > Anaconda 2 and open the Anaconda Prompt. This will be the shell where we type our command lines.
+
+
+## Installing numpy, mkl, gdal, rios and fmask
+To install these, use the existing Anaconda shell and type
+```{r eval = FALSE}
+conda config --add channels conda-forge
+conda config --add channels rios
+conda create -n myenv python-fmask
+```
+
+These lines will ensure these modules and all dependencies are installed.  This step also creates a named environment "myenv", that when activated gives access to all the required modules. To activate "myenv" type
+```{r eval = FALSE}
+activate myenv
+```
+
+You may notice that prior to you activating "myenv" it gives some info regarding activating the environment and precedes our code above with the word "source", Don't do this as this is for a Linux system not Windows. 
+
+## Installing scipy
+To install this, use the existing Anaconda shell and type
+```{r eval =FALSE}
+conda install scipy
+```
+
+
+You now have a working environment from which to use fmask. Make sure you read Step 2 for details on how to use fmask.
+

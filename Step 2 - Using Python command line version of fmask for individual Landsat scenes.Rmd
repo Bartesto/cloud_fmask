@@ -1,0 +1,123 @@
+---
+title: "Step 2 - Using Python command line version of fmask for individual Landsat scenes"
+author: "Bart Huntley"
+date: "Tuesday, August 02, 2016"
+output: html_document
+---
+
+## Introduction
+This document outlines the process involved in using Python at the command line to implement the ‘fmask’ algorithm. This algorithm has been used in many instances, including creating cloud mask products for USGS CDR products, and is described in "Zhu, Z. and Woodcock, C.E. (2012). Object-based cloud and cloud shadow detection in Landsat imagery Remote Sensing of Environment 118 (2012) 83-94." and "Zhu, Z., Wang, S. and Woodcock, C.E. (2015). Improvement and expansion of the Fmask algorithm: cloud, cloud shadow, and snow detection for Landsats 4-7, 8, and Sentinel 2 images Remote Sensing of Environment 159 (2015) 269-277."
+
+As hinted at in the second journal above, this version of fmask can also be used for Sentinel 2 imagery. This documentation does not include code lines for processing Sentinel 2 imagery but this can be found at <http://pythonfmask.org/en/latest/>.
+
+## What do I need?
+The processes outlined below assume that you have downloaded and installed the necessary to have a working Anaconda Python Prompt and have installed, through Conda, all the modules (including fmask) required to run fmask. If all of this is Swahili to you then ensure that you have read and followed "Step_1_-_Installation_of_Python_modules_for_fmask.html"
+
+Apart from the above you will need a working directory with an unzipped Landsat scene as downloaded from USGS. The algorithm can be applied to Landsat sensors 4, 5, 7 and 8. The initial code calls are specific to each sensor but once these are run the remaining steps are sensor independent.
+
+## What's it going to create?
+
+These two steps are sensor dependent
+
+* Create a ref.img
+* Create a thermal.img
+
+The following are sensor independent
+
+* Create an angles.img
+* Create a saturationmask.img
+* Create a toa.img (top of atmosphere reflectance)
+* Lastly  create the cloud.img (a classification raster of water, cloud, cloud shadow, snow and clear pixels)
+
+## Where is everything?
+Before proceeding make sure that you:
+
+1. Open an Anaconda Prompt
+2. Set the environment with
+```{r eval = FALSE}
+activate myenv
+```
+3. Change volume and directory at the Anaconda Prompt to the location of your unzipped USGS Landsat scene, for e.g.
+```{r eval = FALSE}
+# To change to Z:\workingDirectory
+Z:
+cd Z:\workingDirectory
+```
+
+So where is everything? Good question. The Python scripts required for creating the various outputs are buried deep in a user specific location. For all code lines you have to explain in the code where the scripts are located. To find this location type
+```{r eval = FALSE}
+where fmask_expandWildcards.py
+```
+
+This will return the file path to this location. Copy this file path and for every instance of PATH\\TO\\fmask_expandWildcards.py in following code lines, replace it with this copy.
+
+## Sensor specific stages
+####Landsat 4 or 5
+Create the ref.img
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o ref.img L*_B[1,2,3,4,5,7].TIF
+```
+Create the thermal.img
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o thermal.img L*_B6.TIF
+```
+
+####Landsat 7
+Create the ref.img
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o ref.img L*_B[1,2,3,4,5,7].TIF
+```
+Create the thermal.img
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o thermal.img L*_B6_VCID_?.TIF
+```
+
+####Landsat 8
+Create the ref.img
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o ref.img LC8*_B[1-7,9].TIF
+```
+Create the thermal.img
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o thermal.img LC8*_B1[0,1].TIF
+```
+
+## Sensor independent stages
+Once you have created a ref.img and a thermal.img from using one of the above options the following lines need to be run
+
+####Angles
+To create the angles.img type
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py fmask_usgsLandsatMakeAnglesImage.py -m *_MTL.txt -t ref.img -o angles.img
+```
+
+####Saturation Mask
+To create the saturationmask.img type
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py fmask_usgsLandsatSaturationMask.py -i ref.img -m *_MTL.txt -o saturationmask.img
+```
+
+####Top of atmosphere reflectance
+To create the toa.img type
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py fmask_usgsLandsatTOA.py -i ref.img -m *_MTL.txt -z angles.img -o toa.img
+```
+
+####The cloud mask
+To create the cloud.img type
+```{r eval = FALSE}
+python PATH\TO\fmask_expandWildcards.py fmask_usgsLandsatStacked.py -t thermal.img -a toa.img -m *_MTL.txt -z angles.img -s saturationmask.img -o cloud.img
+```
+
+Some of the above stages have progress bars, others take a little longer and have none. It shouldn't take any longer than 10 minutes to run.
+
+The cloud.img is the outputed classification cloud mask raster and has the following values
+
+* 0 is a missing pixel or null
+* 1 is unaffected by cloud and or cloud shadow land pixel
+* 2 is cloud
+* 3 is cloud shadow
+* 4 is snow
+* 5 is water
+
+Happy fmasking!

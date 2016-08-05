@@ -1,0 +1,227 @@
+---
+title: "Using fmaskR"
+author: "Bart Huntley"
+date: "5 August 2016"
+output: html_document
+---
+
+## Introduction
+The function fmaskR is a wrapper function for using the *fmask algorithm* for creating cloud masks for USGS Landsat scenes. The *fmask algorithm* has been written in Python for use at the command line. 
+
+The *fmask algorithm* is a multi-pass algorithm that uses decision trees to prospectively label pixels in the scene; it then validates or discards those labels according to scene-wide statistics.  It also creates a cloud shadow mask by iteratively estimating cloud heights and projecting them onto the ground.
+
+As with most automated cloud masking algorithms, the *fmask algorithm* may have issues over-including bright targets such as building tops, beaches, snow/ice, sand dunes and/or salt lakes. Optically thin clouds will always be challenging to identify, and have a higher probability of being omitted by the algorithm.
+
+The function fmaskR allows the automation of this task across scene date folders in a path/row directory.
+
+## Technical - What happens?
+When run this function iterates through each scene date in a path/row and:
+
+1. Determines if an ...MTL.txt file exists in the folder. If there is one left over from the sun-correct processing (which renames them for that process) it will delete it. When fmaskR is finished in a folder it will leave a new ...MTL.txt file in place.
+
+2. Determines if a cloud mask (.img format) already exists. Function moves on if scene has already been processed.
+
+3. Determines if zipped downloaded USGS scene has been unzipped and if the .TIF files are present. If not the function will unzipp the .tar.gz.
+
+4. Determines what sensor captured the scene and assembles the correct sequence of arguments (sensor specific and generic) for the Python fmask algorithm.
+
+5. Iterates through the creation of all the necessary raster layers (.img) required to create the cloud mask.
+
+6. Undertakes two file removal processes, deleting the results of unzipping the tar.gz and deleting extra raster layers (.img) that were created in Step 5 above. **Note** if you want to keep some of the other outputs (e.g. toa.img) adjust this step accordingly.
+
+7. Renames the cloud mask and any other retained (Step 6) .img to contain a scene specific id.
+
+## Prerequisite
+This function relies on an environment having being set up using Conda for module management in Python. To do this see the documentation below.
+```{r eval=FALSE}
+Z:\DOCUMENTATION\BART\R\R_DEV\cloud_fmask\Step_1_-_Installation_of_Python_modules_for_fmask.html
+```
+
+## Load fmaskR
+Open an RStudio session, make sure the environment is clear and run:
+```{r eval=FALSE}
+
+fmaskR <- function(imdir, Aenv = "myenv", pyPath){
+  start <- Sys.time()
+  setwd(imdir)
+  
+  ## Helper functions
+  list.dirs <- function(path=".", pattern=NULL, all.dirs=FALSE,
+                        full.names=FALSE, ignore.case=FALSE) {
+    # use full.names=TRUE to pass to file.info
+    all <- list.files(path, pattern, all.dirs,
+                      full.names=TRUE, recursive=FALSE, ignore.case)
+    dirs <- all[file.info(all)$isdir]
+    # determine whether to return full names or just dir names
+    if(isTRUE(full.names))
+      return(dirs)
+    else
+      return(basename(dirs))
+  }
+  
+  ## Sensor specific arguments
+  ref5 <- paste("gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o ref.img", 
+                "L*_B[1,2,3,4,5,7].TIF")
+  thermal5 <- paste("gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o",
+                    "thermal.img L*_B6.TIF")
+  
+  ref7 <- paste("gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o", 
+                "ref.img L*_B[1,2,3,4,5,7].TIF")
+  thermal7 <- paste("gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o", 
+                    "thermal.img L*_B6_VCID_?.TIF")
+  
+  ref8 <- paste("gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o", 
+                "ref.img LC8*_B[1-7,9].TIF")
+  thermal8 <- paste("gdal_merge.py -separate -of HFA -co COMPRESSED=YES -o", 
+                    "thermal.img LC8*_B1[0,1].TIF")
+  
+  ## Generic arguments
+  envArg <- paste("activate", Aenv, "&")
+  pyArg <- paste("python", pyPath)
+  anglesArg <- paste("fmask_usgsLandsatMakeAnglesImage.py -m *_MTL.txt -t", 
+                     "ref.img -o angles.img")
+  saturationArg <- paste("fmask_usgsLandsatSaturationMask.py -i", 
+                         "ref.img -m *_MTL.txt -o saturationmask.img")
+  toaArg <- paste("fmask_usgsLandsatTOA.py -i ref.img -m *_MTL.txt -z", 
+                  "angles.img -o toa.img")
+  cloudArg <- paste("fmask_usgsLandsatStacked.py -t thermal.img -a", 
+                    "toa.img -m *_MTL.txt -z angles.img -s saturationmask.img",
+                    "-o cloud.img") 
+  
+  ## create cloud masks using fmask
+  folders <- list.dirs()
+  for(i in 1:length(folders)){
+    setwd(paste0(imdir, "\\", folders[i]))
+    
+    ## message
+    print(paste("Working in folder", folders[i]))
+    
+    ## check for existence of old MTL txt files and remove
+    mtl <- list.files(pattern = "MTL.txt")
+    if(length(mtl) > 0){file.remove(mtl)}
+    
+    ## check for existence of cloud mask
+    cmask <- list.files(pattern = "cloud.img")
+    if(length(cmask) == 0){
+      
+      ## for name of cloud mask output
+      usgsname <- paste0(substr(list.files(pattern = ".pre.ers"), 1 , 9),
+                         substr(list.files(pattern = ".pre.ers"), 11 , 16))
+      
+      ## determine if file unzipped if no unzip it
+      zipped <- list.files(pattern = ".tar.gz")
+      files <- list.files(pattern = ".TIF")
+      if(length(files) == 0){untar(zipped)}
+      
+      ## get sensor for specific arguments
+      sensor <- substr(zipped, 3,3)
+      
+      ## setup .img arguments
+      # ref.img
+      if (sensor == "5") {
+        refimg <- paste(envArg, pyArg, ref5)  
+      } else if (sensor == "7") {
+        refimg <- paste(envArg, pyArg, ref7)
+      } else
+        refimg <- paste(envArg, pyArg, ref8)
+      # thermal.img
+      if (sensor == "5") {
+        thermalimg <- paste(envArg, pyArg, thermal5) 
+      } else if (sensor == "7") {
+        thermalimg <- paste(envArg, pyArg, thermal7) 
+      } else
+        thermalimg <- paste(envArg, pyArg, thermal8)
+      # angles.img
+      anglesimg <- paste(envArg, pyArg, anglesArg)
+      # saturationmask.img
+      satimg <- paste(envArg, pyArg, saturationArg)
+      # toa.img
+      toaimg <- paste(envArg, pyArg, toaArg)
+      # cloud.img
+      cloudimg <- paste(envArg, pyArg, cloudArg)
+      # all .img arguments in a list
+      imgList <- list(refimg, thermalimg, anglesimg, satimg, toaimg, cloudimg)
+      
+      ## process using fmask python calls through shell
+      for(k in 1:length(imgList)){
+        shell(imgList[k])
+      }
+      
+      ## clean up unzipped files
+      notneeded <- list.files(pattern = ".TIF|GCP.txt") 
+      file.remove(notneeded)
+      
+      ## clean up other img rasters - adjust if you want to keep
+      xtraimg <- list.files(pattern = "angles|saturationmask|toa|thermal|ref")
+      file.remove(xtraimg)
+      
+      ## rename .img files
+      imgs <- list.files(pattern = ".img")
+      newimgs <- paste(usgsname, imgs, sep = "_")
+      file.rename(imgs, newimgs)
+      
+      ## message
+      print(paste("Finished with folder", folders[i]))
+      
+    }
+    
+  }
+  
+  ## time stats
+  end <- Sys.time()
+  tot <- end - start
+  
+  ## completion message
+  setwd(imdir)
+  completedmasks <- list.files(pattern = "cloud.img", recursive = TRUE)
+  
+  print(paste("I have made", length(completedmasks)/2, 
+              "cloud masks and it took me", round(tot, 2), "hours"))
+}
+
+```
+
+## Set up parameters
+
+#### imdir
+This is the location of the USGS Landsat scene path/row that you wish to process. An example might be (note double backslash):
+```{r eval=FALSE}
+imdir = "W:\\usgs\\112082"
+```
+
+#### Aenv (Anaconda environment)
+If you followed the steps outlined in the above documentation it will have by default named the environment "myenv". The function defaults to this name. If you changed this name (not recommended) make sure you update the **Aenv** parameter, for e.g.
+```{r eval=FALSE}
+Aenv = "XXXXXX"
+```
+
+#### pyPath
+This is the path to the Python script "fmask_expandWildcards.py" and its location will be different for each installation of Miniconda. To find your location firstly open up a command prompt and type:
+```{r eval=FALSE}
+activate myenv
+```
+**Remember** if you have changed the name of the environment change the above appropriately.
+
+Next to obtain the file path type:
+```{r eval=FALSE}
+where fmask_expandWildcards.py
+```
+
+The output from this command is your pyPath parameter. An example for me is (note double backslash):
+```{r eval=FALSE}
+pyPath = "C:\\Users\\barth\\AppData\\Local\\Continuum\\Miniconda2\\envs\\myenv\\Scripts\\fmask_expandWildcards.py"           
+```
+
+
+## Running fmaskR
+Simple matter of:
+```{r eval=FALSE}
+fmaskR(imdir, Aenv, pyPath)
+```
+
+
+
+
+
+
+

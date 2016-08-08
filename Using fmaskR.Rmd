@@ -106,7 +106,7 @@ fmaskR <- function(imdir, Aenv = "myenv", pyPath){
       
       ## for name of cloud mask output
       usgsname <- paste0(substr(list.files(pattern = ".pre.ers"), 1 , 9),
-                         substr(list.files(pattern = ".pre.ers"), 11 , 16))
+                         substr(list.files(pattern = ".pre.ers"), 11 , 17))
       
       ## determine if file unzipped if no unzip it
       zipped <- list.files(pattern = ".tar.gz")
